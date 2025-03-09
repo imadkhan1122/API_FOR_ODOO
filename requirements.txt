@@ -1,0 +1,7 @@
+fastapi
+langchain
+langchain_community
+pdfminer
+pydantic
+Requests
+uvicorn
