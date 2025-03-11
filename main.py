@@ -17,21 +17,14 @@ import logging
 # Initialize FastAPI app
 app = FastAPI()
 
-# Allow all origins, or specify your frontend domain
-origins = [
-    "https://www.kmizeolite.com",  # Your frontend domain
-    "https://api-for-odoo.onrender.com",
-    "*",  # Allow all (for testing, not recommended for production)
-]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["https://www.kmizeolite.com"],  # Allow only your frontend
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
 )
-
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
