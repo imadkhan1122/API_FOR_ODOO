@@ -1,7 +1,9 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Request
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware  # Import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi import Form
+from scidownl import scihub_download
 from pydantic import BaseModel
 from pdfminer.high_level import extract_text
 from pdfminer.pdfparser import PDFParser
@@ -10,20 +12,21 @@ from langchain.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain.chains.llm import LLMChain
-import os
+import asyncio
+import os, time, glob
 import re
 import logging
 
 # Initialize FastAPI app
 app = FastAPI()
-
+app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://www.kmizeolite.com"],  # Allow only your frontend
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allow all headers
+    allow_headers=["*"],  # Allow all headers,
 )
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -112,6 +115,32 @@ def get_summary(doc_objs, openai_api_key: str):
                                                                                              
     return stuff_chain.run(doc_objs)
 
+@app.post("/download/")
+async def download(request: Request):
+    try:
+        data = await request.json()
+        doi = data.get("doi")
+        save_path = data.get("path")
+
+        if not doi:
+            raise HTTPException(status_code=400, detail="DOI not provided")
+
+        # Use default path if not provided
+        if not save_path:
+            save_path = "downloads/default.pdf"
+        else:
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        # Download the file
+        scihub_download(doi, out=save_path, paper_type='doi')
+        # Done: client will check for file presence
+        return JSONResponse(content={"message": "Download attempted"}, status_code=200)
+
+    except Exception as e:
+        logging.error(f"Error downloading paper: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/upload-pdf/")
 async def upload_pdf(
     file: UploadFile = File(..., max_size=10_000_000),  # 10 MB limit
@@ -139,6 +168,7 @@ async def upload_pdf(
     except Exception as e:
         logging.error(f"Error processing file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 # Run the application
 if __name__ == "__main__":
