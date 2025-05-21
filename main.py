@@ -19,6 +19,9 @@ import logging
 
 # Initialize FastAPI app
 app = FastAPI()
+
+# Ensure 'downloads' directory exists before mounting
+os.makedirs("downloads", exist_ok=True)
 app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 app.add_middleware(
