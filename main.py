@@ -120,6 +120,9 @@ def get_summary(doc_objs, openai_api_key: str):
 
 @app.post("/download/")
 async def download(request: Request):
+    files = os.listdir('downloads/')
+    for f in files:
+        os.remove('downloads/'+f)
     try:
         data = await request.json()
         doi = data.get("doi")
