@@ -12,6 +12,9 @@ from langchain.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain.chains.combine_documents.stuff import StuffDocumentsChain
 from langchain.chains.llm import LLMChain
+import base64
+import logging
+from openai import OpenAI
 import asyncio
 import os, time, glob
 import re
@@ -23,6 +26,9 @@ app = FastAPI()
 # Ensure 'downloads' directory exists before mounting
 os.makedirs("downloads", exist_ok=True)
 app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
+
+os.makedirs("images", exist_ok=True)
+app.mount("/images", StaticFiles(directory="images"), name="images")
 
 app.add_middleware(
     CORSMiddleware,
@@ -110,7 +116,7 @@ def get_summary(doc_objs, openai_api_key: str):
     prompt = PromptTemplate.from_template(prompt_template)
 
     # Define LLM chain
-    llm = ChatOpenAI(temperature=0, model_name="gpt-4", openai_api_key=openai_api_key)
+    llm = ChatOpenAI(temperature=0, model_name="gpt-4o-mini", openai_api_key=openai_api_key)
     llm_chain = LLMChain(llm=llm, prompt=prompt)
 
     # Define StuffDocumentsChain
@@ -145,8 +151,7 @@ async def download(request: Request):
     except Exception as e:
         logging.error(f"Error downloading paper: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
+    
 @app.post("/upload-pdf/")
 async def upload_pdf(
     file: UploadFile = File(..., max_size=10_000_000),  # 10 MB limit
@@ -174,9 +179,56 @@ async def upload_pdf(
     except Exception as e:
         logging.error(f"Error processing file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/generate-image/")
+async def generate_image(
+    openai_api_key: str = Form(...),
+    save_path: str = Form(...),  # Full path where image should be saved
+    title: str = Form(...)      # Title for the image filename
+):
+    try:
+        files = os.listdir('images/')
+        for f in files:
+            os.remove('images/'+f)
+            
+        # Generate filename (sanitize title and add timestamp)
+        import re
+        from datetime import datetime
+        clean_title = re.sub(r'[^\w\-_]', '_', title)[:50]  # Sanitize and truncate
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{timestamp}.png"
+        full_path = os.path.join(save_path, filename)
+
+        # Initialize OpenAI client
+        client = OpenAI(api_key=openai_api_key)
+        prompt = "Create a simple and natural image inspired by the title '{title}', but ensure there is no text or overlapping text on the image."
+        # Generate image
+        result = client.images.generate(
+            model="dall-e-2",
+            prompt=prompt,
+            response_format="b64_json",
+            n=1,
+            size="1024x1024"
+        )
+
+        # Decode and save image
+        image_data = base64.b64decode(result.data[0].b64_json)
+        with open(full_path, 'wb') as f:
+            f.write(image_data)
+
+        return JSONResponse(content={
+            "message": "Image generated and saved successfully",
+            "path": full_path,
+            "filename": filename
+        })
+
+    except Exception as e:
+        logging.error(f"Image generation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 # Run the application
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8282)
